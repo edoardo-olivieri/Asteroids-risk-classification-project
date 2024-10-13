@@ -1,0 +1,1091 @@
+---
+title: 'Valutazione del rischio Asteroidi: analisi comparativa tra metodi di classificazione'
+author: "Francesca Verna 880290, Edoardo Olivieri 880280"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+```{css, echo=FALSE}
+
+.tocify {
+    position: fixed;
+    left: 130px;
+    top: 30px;
+    width: 250px;
+    z-index: 1000;
+}
+
+.r {
+    font-size: 0.9em;
+}
+
+body {
+    margin-left: -250px;
+    margin-right: -100px;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  font-size: 16px;
+  color: black;
+}
+
+h1 {
+  color: #007ba7; 
+}
+
+h2 {
+  color: #007ba7; 
+}
+
+h3 {
+  color: #007ba7;
+}
+
+.tocify {
+  width: 500px; 
+}
+
+.tocify-header {
+  color: #007ba7; 
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.tocify-subheader {
+  color:#007ba7;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.tocify-subheader .tocify-subheader {
+  color: #007ba7;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.tocify-item {
+  background-color: white;
+  font-weight: bold;
+  font-size: 14px;
+}
+```
+
+# EDA
+
+In questo Markdown si andranno ad esaminare diversi approcci di classificazione applicati a un dataset contenente informazioni sugli asteroidi, al fine di determinare se siano pericolosi o non pericolosi per la Terra. L'indagine si concentrerà sull'utilizzo di tecniche quali: KNN, QDA e LDA, regressione logistica, alberi decisionali e random forest, al fine di valutare la loro efficacia nel discernere la natura dei corpi celesti. Attraverso questo studio, si mira a fornire una panoramica completa delle prestazioni di ciascun metodo e a identificare le migliori pratiche per la classificazione degli asteroidi, contribuendo così alla comprensione della sicurezza celeste.
+
+Il dataset preso in considerazione proviene da NeoWs (Near Earth Object Web Service), un servizio web RESTful per informazioni riguardanti asteroidi vicini alla Terra. I dati sono a loro volta forniti da CNEOS (Centre for Near Earth Object Studies), cioè il centro della NASA per determinare le orbite di asteroidi e comete, e calcolarne le probabilità di impatto con la Terra.
+
+```{r, include=FALSE}
+nasa_nb <- read.csv("D:/informatica uni/DataMining/nasa_nb.csv")
+```
+
+```{r, include=FALSE}
+library(tidyverse)
+library(skimr)
+library(ggplot2)
+library(viridis)
+library(hrbrthemes)
+library(plotly)
+library(caret)
+library(e1071)
+library(ggcorrplot)
+library(GGally)
+library(ISLR) 
+library(class)
+library(tree)
+library(gridExtra)
+library(car)
+library(randomForest)
+library(ROCR)
+library(kableExtra)
+```
+
+```{r,fig.width=10}
+skim(nasa_nb)
+```
+
+Nel dataset sono presenti 4687 osservazioni e 40 variabili, 5 di tipo character, e 35 di tipo numeric e nessuna variabile presenta dati mancanti. Segue una breve descrizione delle variabili per comprendere a meglio gli esiti dei test:
+
+-   **Neo.Reference.ID**: valore univoco per catalogare l’oggetto.
+
+-   **Name**: nome che viene dato al corpo celeste.
+
+-   **Absolute.Magnitude**: indica la magnitudine assoluta, cioè la magnitudine apparente che l'oggetto avrebbe se si trovasse ad 1 unità astronomica sia dal Sole che dalla Terra, con un angolo di fase di zero gradi.
+
+-   **Est.Dia.in.KM.min/Est.Dia.in.KM.max**: indicano rispettivamente il diametro stimato minimo e massimo in chilometri. Nel dataset sono presenti altre variabili che indicano anche loro la stima del diamentro minima e massima, ma misurate in miglia, piedi e metri. Per semplicità di comprensione del problema abbiamo tenuto le variabili che esprimono le unità di spazio in chilometri.
+
+-   **Close.Approach.Date:** indica la data (in formato YYYY-MM-DD) in cui l'asteroide sarà vicino alla Terra.
+
+-   **Epoch.Date.Close.Approach**: indica la data in cui l'asteroide sarà vicino alla Terra espressa in epoca astronomica.
+
+-   **Relative.Velocity.km.per.hr**: indica la velocità relativa del corpo celeste espressa in chilometri orari. Nel dataset sono presenti anche due variabile che esprimono: una la velocità relativa in chilometri al secondo e l'altra in miglia orarie. Preferiamo però tenere la velocità espressa in chilometri orari, per evitare numeri eccessivamente grandi e poco comprensibili.
+
+-   **Miss.Dist..kilometers**: indica, in chilometri, quanto l'asteroide passerà vicino alla Terra. Nel dataset sono presenti anche altre tre variabili che indicano la medesima cosa, espresse però in: unità astronomiche, unità lunari e miglia. Anche in questo caso abbiamo scelto i chilometri per rendere più facilmente interpretabili i dati.
+
+-   **Orbiting.Body**: nome del pianeta attorno a cui orbita l'asteroide.
+
+-   **Orbit.ID**: valore univoco per catalogare l'orbita.
+
+-   **Orbit.Determination.Date**: indica la data (in formato YYYY-MM-DD) in cui è stata determinata l'orbita dell'asteroide.
+
+-   **Orbit.Uncertainity**: indica l'incertezza legata alla determinazione dell'orbita.
+
+-   **Minimum.Orbit.Intersection**: indica la distanza tra i due punti più vicini delle orbite osculanti dell'asteroide e del pianeta attorno a cui orbita.
+
+-   **Jupiter.Tisserand.Invariant**: è un numero calcolato sulla base di diversi elementi orbitali (quali semiasse maggiore, eccentricità e inclinazione) di un oggetto relativamente, rispetto a un oggetto più grande quale Giove.
+
+-   **Epoch.Osculation**: momento in cui sono stati rilevati i diversi elementi orbitali dell'asteroide.
+
+-   **Eccentricity**: indica l'eccentricità dell'orbita dell'asteroide.
+
+-   **Semi.Major.Axis**: indica il semiasse maggiore dell'orbita dell'asteroide.
+
+-   **Inclination**: indica l'inclinazione dell'orbita dell'asteroide rispetto al corpo attorno a cui orbita.
+
+-   **Asc.Node.Longitude**: : indica l’angolo di ascensione (analoga alla longitudine ma proiettata sulla sfera celeste anziché sulla superficie terrestre).
+
+-   **Orbital.Period**: indica il periodo che impiega l'asteroide a compiere una intera orbita (espresso in epoche astronomiche).
+
+-   **Perihelion.Distance**: indica la distanza del perielio dell'orbita.
+
+-   **Perihelion.Arg**: indica l'angolo tra il punto di ascensione e il punto dell'orbita in cui il l'asteroide è più vicino al Sole.
+
+-   **Aphelion.Dist**: indica la distanza dell'afelio dell'orbita.
+
+-   **Perihelion.Time**: indica il periodo in cui l'asteroide è al perielio della sua orbita (espresso in epoche astronomiche).
+
+-   **Mean.Anomaly**: indica quanto lontano ha progredito l'asteroide lungo la sua orbita dopo che ha passato il punto di perielio
+
+-   **Mean.Motion**: indica la velocità angolare che è richiesta all'asteroide per completare un'orbita.
+
+-   **Equinox**: indica la data (epoca astronomica) di quando il piano passante per il centro dell'asteroide passa anche per il centro geometrico del disco del Sole.
+
+-   **Hazardous**: variabile target, che è codificata come *True* quando l'asteroide è considerato pericoloso, mentre *False* quando è considerato non pericoloso.
+
+Si procede alla preparazione e pulizia iniziale del dataset, rimuovendo le variabili che indicano un codice identificativo come **Neo.Reference.ID**, **Name** e **Orbit.ID**, le variabili che esprimono una data o un periodo come **Close.Approach.Date**, **Epoch.Date.Close.Approach**, **Orbit.Determination.Date**, **Equinox**, **Orbital.Period**, **Epoch.Osculation** e **Perihelion.Time**, le variabili che esprimono delle coordinate come **Asc.Node.Longitude**, la variabile **Orbiting.Body**, dato che tutte le osservazioni nel dataset orbitano attorno alla Terra e infine le variabili "doppione", le cui informazioni sono già contenute in altre variabili come **Est.Dia.in.Feet.max.**, **Est.Dia.in.Feet.min.**, **Est.Dia.in.M.max.**, **Est.Dia.in.M.min.**, **Est.Dia.in.Miles.max.**, **Est.Dia.in.Miles.min.**, **Relative.Velocity.km.per.sec**, **Miss.Dist..Astronomical.**, **Miss.Dist..lunar.**, **Miss.Dist..miles.** e **Miles.per.hour.** Si procede anche a ricodificare i due esiti della variabile target **Hazardous**: si imposta *True* come 1 e *False* come 0.
+
+```{r}
+nasa_clean <- nasa_nb %>% select(-Neo.Reference.ID, -Name , -Close.Approach.Date, -Orbiting.Body, -Orbit.ID, -Orbit.Determination.Date, -Equinox, -Asc.Node.Longitude, -Est.Dia.in.Feet.max., -Est.Dia.in.Feet.min., -Est.Dia.in.M.max., -Est.Dia.in.M.min., -Est.Dia.in.Miles.max., -Est.Dia.in.Miles.min., -Epoch.Date.Close.Approach, -Relative.Velocity.km.per.sec, -Miss.Dist..Astronomical., -Miss.Dist..lunar., -Miss.Dist..miles., -Miles.per.hour, -Epoch.Osculation, -Perihelion.Time, -Orbital.Period) %>% mutate(Hazardous=ifelse(Hazardous=="True", 1,0)) %>% mutate(Hazardous=as.factor(Hazardous))
+```
+
+## Splitting del dataset
+
+Dopo una introduttiva pulizia del dataset, si prosegue a dividerlo fin da subito in Training set e Test set, dividendo ulteriormente il primo in Subtraining set e Validation set. Le proporzioni di osservazioni sono state divise in 80% Training set (65% Subtraining e 35% Validation) e 20% Test set.
+
+```{r}
+set.seed(123)
+nasa_idx = sample(nrow(nasa_clean), nrow(nasa_clean)*0.8) 
+# Training Set
+nasa_trn = nasa_clean[nasa_idx, ]
+# Test Set
+nasa_tst = nasa_clean[-nasa_idx,] 
+
+set.seed(123)
+subtrain_index <- sample(nrow(nasa_trn), nrow(nasa_trn)*0.65)
+# Subtraining
+sub_training <- nasa_trn[subtrain_index, ]
+# Validation
+validation <- nasa_trn[-subtrain_index, ]
+```
+
+Una volta ottenuti i tre set di dati, si controlla subito che al loro interno non ci siano particolari anomalie:
+
+```{r, fig.width=10}
+# Validation
+skim(validation)
+```
+
+```{r, fig.width=10}
+# Test set
+skim(nasa_tst)
+```
+
+```{r, fig.width=10}
+# Subtraining
+skim(sub_training)
+```
+
+## Bilanciamento
+
+Dopo aver confermato l'assenza di dati mancanti e anomalie all'interno dei set di dati, si procede a controllare la proporzione degli esiti della variabile target **Hazardous** con un grafico interattivo:
+
+```{r,fig.width=7, fig.height=5}
+a <- round(prop.table(table(sub_training$Hazardous)),4)
+b <- round(prop.table(table(validation$Hazardous)),4)
+c <- round(prop.table(table(nasa_tst$Hazardous)),4)
+
+dataset <- c(rep("Subtraining Set" , 2) , rep("Validation Set" , 2) , rep("Test Set" , 2))
+esito <- rep(c("Non-Hazardous" , "Hazardous") , 3)
+proporzione <- c(a,b,c)
+data <- data.frame(dataset,esito,proporzione)
+
+bar_plot <- ggplot(data, aes(fill=esito, y=proporzione, x=dataset)) + 
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_manual(values = c("purple","green2")) +
+  ggtitle("Proporzioni degli esiti")
+ggplotly(bar_plot)
+```
+
+Dal grafico si nota che le proporzioni delle due classi sono pressochè le stesse all'interno del Subtraining, Validation e Test set, confermando che la suddivisione è stata casuale. Si nota però anche un forte sbilanciamento a favore della classe 0, cioè degli asteroidi non pericolosi. Per risolvere questo problema di dati non bilanciati, anzichè procedere con un sottocampionamento della classe maggioritaria, e quindi inevitabilmente perdere informazioni potenzialemente rilevanti, si è deciso di procedere con un sovracampionamento della classe minoritaria con la funzione *upSample* del pacchetto *caret*. L'*upSample* è stato applicato al solo subtraining per il momento, e non al validation, dato che sul validation si deve verificare il classificatore che si ottiene dal subtraining, e va quindi trattato come se fossero osservazioni nuove.
+
+```{r}
+set.seed(123)
+sub_training <- upSample(sub_training[,-17], sub_training[,17], yname = "Hazardous")
+table(sub_training$Hazardous)
+```
+
+Il subtraining è ora bilanciato.
+
+## Boxplot del subtraining
+
+Si procede ora con l'analisi delle distribuzioni e di possibili outlier delle variabili nel subtraining. Si fa uso dei boxplot delle variabili:
+
+```{r, fig.width=10, fig.height=6}
+melted_data <- reshape2::melt(sub_training, id.vars = "Hazardous") %>% rename(Variabile=variable) 
+
+ggplot(melted_data, aes( x="", y = value, fill = Variabile)) +
+  geom_boxplot( outlier.shape="x", outlier.size=3, show.legend = F) +
+  facet_wrap(~ Variabile, nrow = 5, scales = "free") +
+  labs(title = "Boxplots per 16 Variabili", x = "") +
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank())
+```
+
+Dai boxplot si può notare come diverse variabili, in particolare **Est.Dia.inKM.min.**, **Est.Dia.in.KM.max.**,**Minimum.Orbit.Intersection** e **Inclination** presentino forti asimmetrie con presenza di molteplici outlier. Come ulteriore test per verificare la necessità di applicare trasformazioni a queste variabili, se ne calcola la skewness, ovvero l'asimmetria.
+
+```{r}
+apply(sub_training[,-17], 2, skewness) 
+```
+
+Si può notare come le variabili menzionate precedentemente presentano tutte una skewness maggiore di 1, suggerendo una trasformazione logaritmica. Anche la variabile **Aphelion.Dist** presenta una skewness elevata, così come **Semi.Major.Axis**, ma si è deciso di non trasformarle, presentando entrambe una skewness piuttosto vicina a 1.
+
+Si procede quindi trasformando le 4 variabili sopra menzionate:
+
+```{r}
+sub_trn_log <- sub_training %>% mutate(Est.Dia.in.KM.min.=log(Est.Dia.in.KM.min.),
+                                       Est.Dia.in.KM.max.=log(Est.Dia.in.KM.max.),
+                                       Minimum.Orbit.Intersection=log(Minimum.Orbit.Intersection),
+                                       Inclination=log(Inclination))
+```
+
+Si controllano nuovamente i boxplot delle variabili:
+
+```{r, fig.width=10, fig.height=6}
+#GRAFICO BOXPLOT POST TRASFORMAZIONI LOG
+melted_data <- reshape2::melt(sub_trn_log, id.vars = "Hazardous") %>% rename(Variabile=variable) 
+
+ggplot(melted_data, aes( x="", y = value, fill = Variabile)) +
+  geom_boxplot( outlier.shape="x", outlier.size=3, show.legend = F) +
+  facet_wrap(~ Variabile, nrow = 5, scales = "free") +
+  labs(title = "Boxplots per 16 Variabili", x = "") +
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank())
+```
+
+Si controlla nuovamente la skewness delle variabili:
+
+```{r}
+apply(sub_trn_log[,-17], 2, skewness) 
+```
+
+Sia i nuovi boxplot che le nuove skewness confermano la precedente necessità di applicare una trasformazione logaritmica.
+
+## Correlazioni tra variabili
+
+```{r, fig.width=10, fig.height=8}
+corr1 <- round(cor(sub_trn_log[,-c(17)]), 3)
+
+corr_plot <- ggcorrplot(corr1, hc.order = TRUE, lab=T, lab_size = 4, type="lower", show.diag = T)
+corr_plot
+```
+
+Dal corrplot si può notare la presenza di alcune variabili altamente correlate. Mantenere all'interno del subtraining tali variabili non contribuirebbe al miglioramento del modello, dato che le informazioni contenute in una variabile altamente correlata con un'altra (sia positivamente o negativamente), saranno contenute anche all'interno dell'altra variabile con cui è fortemente correlata. Controllando i valori delle correlazioni e incrociando le variabili correlate fra di loro, si è deciso di rimuovere le variabili **Mean.Motion**, **Semi.Major.Axis**, **Aphelion.Dist**, **Est.Dia.in.KM.min** e **Est.Dia.in.KM.max**. Le prime tre sono state rimosse sia per la loro elevata correlazione fra di loro, che con la variabile **Jupiter.Tisserand.Invariant**, che si è invece deciso di tenere. Per quanto riguarda le altre due variabili, anch'esse sono risultate altamente correlate sia fra di loro che con la variabile **Absolute.Magnitude**, la quale si è invece deciso di mantenere all'interno del subtraining.
+
+```{r}
+# Rimozione variabili altamente correlate
+sub_trn_clean <- sub_trn_log %>% select(-Mean.Motion,-Semi.Major.Axis,-Aphelion.Dist,
+                                         -Est.Dia.in.KM.min., -Est.Dia.in.KM.max.)
+```
+
+## Distribuzioni di densità
+
+L'analisi delle distribuzioni di densità condizionate alle due classi è utile per fare una ulteriore selezione delle variabili. L'obbiettivo è quello di mantenere solo variabili che presentano distribuzioni diverse per le due classi. Occorre fare ciò per evitare di considerare nei modelli variabili che risultano poco utili per la distinzione fra le due classi, e che andrebbero ad aggiungere inutilmente del "rumore" che spesso condiziona negativamente il modello.
+
+```{r, fig.width=10, fig.height=6}
+melted_data2 <- reshape2::melt(sub_trn_clean, id.vars = "Hazardous")
+
+ggplot(melted_data2, aes(x = value)) +
+  geom_density(aes(fill=factor(Hazardous)), alpha=0.5) +
+  facet_wrap(~ variable, nrow = 4, scales = "free") +
+  labs(title = "Distribuzioni di densità condizionatamente a Hazardous e Non-Hazardous", x = "Valore", y = "Densità") +
+  scale_fill_manual(values = c("green2","purple"), name = "Esito", labels = c("Non-Hazardous",  "Hazardous")) +
+  theme_minimal()
+```
+
+Dai grafici sopra rappresentati si nota come le uniche variabili che permettano di discriminare tra le due classi sono le variabili **Absolute.Magnitude**, **Orbit.Uncertainity** e **Minimum.Orbit.Intersection**.
+
+```{r}
+final_sub_trn <- sub_trn_clean %>% select(Absolute.Magnitude, Orbit.Uncertainity,
+                                          Minimum.Orbit.Intersection,Hazardous)
+
+```
+
+# SUBTRAINING E VALIDATION
+
+## Normalizzazione
+
+Dopo aver concluso l'analisi esplorativa, aver applicato le trasformazioni necessarie ed aver selezionato le variabili rilevanti per la distinzione fra le due classi, si procede con la normalizzazione del subtraining. Grazie all'analisi sulle distribuzioni delle variabili, si è notato come le distribuzioni non siano normali. Perciò, per far sì che le variabili si muovano in un intervallo di definizione comune, si è applicata la normalizzazione.
+
+```{r}
+#### Normalizzazione Subtraining (con trasformazioni effettuate) ####
+
+minmax <- matrix(0, nrow=(dim(final_sub_trn)[2]-1), ncol=2) 
+colnames(minmax) <- c("min", "max")
+
+# calcolo min e max.
+for (i in 1:(dim(final_sub_trn)[2]-1)){
+  minmax[i, "min"] <- min(final_sub_trn[,i])
+  minmax[i, "max"] <- max(final_sub_trn[,i])
+}
+
+# normalizzazione
+for (i in 1:(dim(final_sub_trn)[2]-1)){
+  final_sub_trn[, i] <- (final_sub_trn[, i] - minmax[i, "min"])/(minmax[i, "max"]- minmax[i, "min"])
+}
+
+summary(final_sub_trn)
+
+```
+
+Si procede a normalizzare, sfruttando le metriche salvate del final_sub_trn, anche il validation set, su cui sono state fatte sia selezione delle variabili che le trasformazioni necessarie.
+```{r}
+#### Preparazione e normalizzazione Validation (con trasformazioni effettuate) ####
+
+validation_log <- validation %>% select(Absolute.Magnitude, Orbit.Uncertainity,
+                                        Minimum.Orbit.Intersection,Hazardous) %>%
+  mutate(Minimum.Orbit.Intersection=log(Minimum.Orbit.Intersection))
+
+# normalizzazione
+for (i in 1:(dim(validation_log)[2]-1)){
+  validation_log[, i] <- (validation_log[, i] - minmax[i, "min"])/(minmax[i, "max"]- minmax[i, "min"])
+}
+
+summary(validation_log)
+
+```
+
+## Analisi Discriminante
+
+*Già dall'analisi esplorativa si era notato come le densità delle variabili distinte per classi non sembravano essere normali. Tuttavia per completezza dell'analisi e per sicurezza si è deciso di fare ulteriori verifiche*
+
+Per l' Analisi Discriminante, si sfrutta il sub_training su cui sono state eseguite sia la variable selection che le eventuali trasformazioni necessarie secondo quanto emerso dall'analisi esplorativa.
+
+Si procede con la verifica delle assunzioni per valutare se sia possibile applicare l'Analisi Discriminante. Tale metodo richiede che le osservazioni all'interno di ciascuna classe si distribuiscano come una normale multivariata con un proprio vettore delle medie. Nel caso di Analisi Discriminante Lineare si suppone che la matrice di varianza e covarianza sia uguale per tutte le classi. Nel caso di Analisi Discriminante Quadratica, invece, le osservazioni all'interno di ogni classe hanno una propria matrice di varianza e covarianza diversa da quella delle altre classi.
+
+Si va quindi a costruire per ogni variabile, condizionatamente a ciascuna classe, il qqplot, grafico che confronta i quantili delle variabili con quelli di una normale standard, al fine di verificare l'assunzione di normalità.
+
+```{r, fig.width=10, fig.height=6}
+# Funzione per Q-Q plot per singola variabile
+qq_plot <- function(data, var) {
+  ggplot(data, aes(sample = !!sym(var), color = Hazardous)) + 
+    geom_qq_line(color="black", linewidth=0.8) +
+    geom_qq() + 
+    facet_wrap(~Hazardous) +
+    labs(title = paste("Q-Q Plot di", var), size = 2) +
+    labs(x = "", y = "") +
+    scale_color_manual(values = c("green2","purple"), name = "Esito", labels = c("Non-Hazardous",  "Hazardous"))
+}
+
+# Q-Q plot per le diverse variabili
+plots_list <- lapply(names(final_sub_trn)[1:ncol(final_sub_trn)-1], function(var) qq_plot(final_sub_trn, var))
+
+# Unione dei Q-Q plot
+grid.arrange(grobs = plots_list, ncol = 2)
+
+```
+
+Dai tre grafici precedenti, si nota che nessuna variabile in nessuna classe presenta distribuzione normale, in quanto i punti si discostano molto dalla qqline. Per ulteriore sicurezza, si è applicato lo Shapiro Test, la cui ipotesi nulla H0 è che i dati provengano da una normale.
+
+```{r}
+# Test Shapiro-Wilk diviso per classe
+pvalue_shapiro <- final_sub_trn %>%
+  group_by(Hazardous) %>%
+  summarise(across(everything(), ~ shapiro.test(.x)$p.value, .names = "{.col}")) %>%
+  pivot_longer(cols = -Hazardous, names_to = "Variable", values_to = "P_Value")
+
+tab_shapiro <- pvalue_shapiro %>%
+  pivot_wider(names_from = Hazardous, values_from = P_Value)
+colnames(tab_shapiro) <- c("Variabile", "p-value Non-Hazardous", "p-value Hazardous")
+
+# Tabella
+shapiro_test <- tab_shapiro %>%
+  kable("html", escape = FALSE, digits = 20) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "bordered"), full_width = FALSE)
+shapiro_test
+```
+
+I p-value sono tutti al di sotto della soglia 0.05, il che conduce a rifiutare l'ipotesi nulla e a confermare quanto si era già visto graficamente. Data l'evidente violazione dell'assunzione di distribuzione normale delle variabili condizionatamente a ciascuna classe, si è deciso di non proseguire con questa tecnica.
+
+## Regressione Logistica
+
+Anche nel caso della regressione logistica, si sfrutta il sub_training su cui sono state eseguite sia la selezione delle variabili che le eventuali trasformazioni.
+
+La regressione logistica è un modello statistico usato molto spesso nell'ambito della classificazione con problemi di tipo binario. Quando la variabile risposta è una variabile dicotomica, quindi con distribuzione bernoulliana, la regressione lineare non è un buon modello, perchè potrebbe produrre delle probabilità stimate inferiori a 0 o maggiori di 1. La regressione logistica è un approccio decisamente migliore in quanto assicura che le probabilità stimate si muovano nell'intervallo 0-1. Essa rientra nella classe dei GLM, i quali prevedono l'esistenza di una relazione lineare tra la link function applicata alla media della risposta e la combinazione lineare delle variabili predittive. Nel caso della regressione logistica il link è il link logit. La media della risposta, che si può anche definire come $\text{Pr}(Y = 1|X = x)$, si muove nell'intervallo 0-1, mentre la combinazione lineare dei predittori sull'insieme dei numeri reali. Il logit di $\text{Pr}(Y = 1|X = x)$, ovvero $\log \left( \frac{{\text{Pr}(Y=1|X)}}{{1-\text{Pr}(Y=1|X)}} \right)$, muovendosi anch'esso nell'insieme dei numeri reali, permette di costruire una relazione di uguaglianza con la combinazione dei predittori, cosa che non si potrebbe fare se si considerasse solo la media della risposta. Ciò è importante in quanto è necessario verificare che la relazione tra i log-odds e le esplicativa sia lineare affinchè si possa affermare che la regressione logistica sia un modello adatto per il problema in esame.
+
+In generale, supponendo di avere a disposizione $p$ covariate, la regressione logistica stima la seguente relazione:
+
+$$
+\text{logit}(P(Y=1|X)) = \beta_0 + \beta_1X_1 + \beta_2X_2 + \ldots + \beta_pX_p
+$$
+
+Si procede per prima cosa con la costruzione del modello di regressione logistica, dove **Hazardous** rappresenta la variabile risposta, mentre **Minimum.Orbit.Intersection**, **Absolut.Magnitude** e **Orbit.Uncertainty** costituiscono le covariate.
+
+```{r}
+model_logit<-glm(Hazardous~., data=final_sub_trn, family=binomial)
+summary(model_logit)
+```
+
+L'output restituisce: la stima dei coefficienti (stimati tramite massima verosimiglianza), l'errore standard, lo z-value e il p-value del test di Wald. Il test di Wald viene sfruttato per verificare l'H_0 :$\beta_j = 0$. Tutti i p-value sono significativi: ciò consente di rifiutare l'ipotesi nulla e di concludere che tutte le variabili considerate sono significative ai fini della spiegazione della variabile risposta. Eccetto l'intercetta, tutti i coefficienti stimati sono negativi. Ciò significa che, a parità delle altre covariate, se **Absolute.Mgnitude** aumenta di uno il log-odds che l'asteroide sia pericoloso diminuisce di 16.7481. La stessa interpretazione vale per **Obrit.Uncertainty** e per **Minimum.Orbit.Intersection**.
+
+Si procede con la valutazione della presenza di eventuali punti influenti che potrebbero influenzare negativamente il modello di regressione. Ciò viene fatto tramite il comando *influencePlot()*: questo grafico crea un bubble plot dei residui studentizzati contro i punti di leva. La grandezza di ogni punto è proporzionale al valore della distanza di Cook, che permette di identificare punti influenti. Più è alto il suo valore più le osservazioni sono influenti sul modello. I punti di leva sono invece osservazioni il cui valore si discosta molto da quello delle altre osservazioni.
+
+```{r, fig.width=10, fig.height=6}
+influencePlot(model_logit)
+```
+
+Dal grafico emerge la presenza di quattro punti influenti: si tratta delle osservazioni 357, 668, 750 e 1473. Si decide quindi di provare a eliminare tale osservazioni per vedere se ci sia un miglioramento nel modello.
+
+```{r}
+final_sub_trn2<-final_sub_trn[-c(357, 668, 750, 1473), ]
+
+```
+
+```{r}
+model_logit2<-glm(Hazardous~., data=final_sub_trn2, family='binomial')
+summary(model_logit2)
+
+```
+
+Si nota che tutti e tre i coefficienti delle covariate sono rimasti altamente significativi e il nuovo modello presenta un AIC più basso del modello di partenza, suggerendo un miglioramento. L'AIC si calcola nel seguente modo: $$ AIC = -2 \times \text{log-likelihood} + 2 \times k $$ dove k è il numero di parametri del modello. E' una misura che permette di confrontare modelli diversi e si occupa di trovare un compromesso tra la bontà di adattamento del modello ai dati, rappresentato dalla log-likelihood, e la complessità del modello stesso, rappresentata dal numero di parametri. Il modello migliore è quello con AIC più basso.
+
+### Relazioni lineari
+
+A questo punto, sfruttando il nuovo modello, si procede a valutare che la relazione tra i log-odds e le covariate sia lineare.
+
+```{r, fig.width=10, fig.height=4}
+set.seed(123)
+probabilities <- predict(model_logit2, type = "response")
+predictors <- c("Absolute.Magnitude", "Orbit.Uncertainity", "Minimum.Orbit.Intersection")
+
+# Costruzione delle log(p1/(1-p1))
+supp <- final_sub_trn2[, -c(4)]
+supp <- supp %>%
+  mutate(logit = log(probabilities/(1-probabilities))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+
+# Costruzione dei grafici
+ggplot(supp, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+
+```
+
+Dall'analisi dei grafici, sembra che per nessuna variabile tale assunzione di linearità sia soddisfatta. L'unica variabile per la quale esiste una relazione pressochè lineare è **Absolute.Magnitude**. La variabile **Orbit.Uncertainty** presenta un andamento a scalini in quanto la si può interpretare come una variabile categoriale ordinale: ad ogni osservazione viene assegnato un numero rappresentante il grado di incertezza con cui viene stimata l'orbita dell'asteroide. La regressione logistica dunque non sembra essere il modello più adatto per stimare la relazione tra **Hazardous** e le covariate. Tuttavia, si è deciso di valutare le sue performance nel validation set.
+
+## K-Nearest Neighbors
+
+Il KNN è un algoritmo non parametrico, detto lazy learning algorithm. Gli algoritmi non parametrici non fanno alcuna assunzione sui dati. Per tale motivo, ai fini dell'allenamento di tale algoritmo si è deciso di costruire un ulteriore sub_training nel quale si sono mantenute, oltre alla variabile target **Hazardous**, le variabili che sono risultati più significative dall'analisi esplorativa, vale a dire **Absolute.Magnitude**, **Orbit.Uncertainty** e **Minimum.Orbit.Intersection**, senza però applicare la trsformata logaritmica a quest'ultima variabile. Si è comunque fatta la normalizzazione in quanto il KNN si basa su una misura di distanza.
+
+Si selezionano le variabili di interesse.
+
+```{r}
+final_sub_trn_KNN <- sub_training %>% select(Absolute.Magnitude, Orbit.Uncertainity,
+                                             Minimum.Orbit.Intersection,Hazardous)
+
+```
+
+### Normalizzazione
+
+Si procede con la normalizzazione, salvando sia il minimo che il massimo di ciascuna variabile. Ciò è importante per quando si andrà a normalizzare il validation set.
+
+```{r}
+#### Normalizzazione Subtraining (per KNN senza trasformazioni effettuate) ####
+
+minmax_KNN <- matrix(0, nrow=(dim(final_sub_trn_KNN)[2]-1), ncol=2) 
+colnames(minmax_KNN) <- c("min", "max")
+
+# calcolo min e max.
+for (i in 1:(dim(final_sub_trn_KNN)[2]-1)){
+  minmax_KNN[i, "min"] <- min(final_sub_trn_KNN[,i])
+  minmax_KNN[i, "max"] <- max(final_sub_trn_KNN[,i])
+}
+
+# normalizzazione
+for (i in 1:(dim(final_sub_trn_KNN)[2]-1)){
+  final_sub_trn_KNN[, i] <- (final_sub_trn_KNN[, i] - minmax_KNN[i, "min"])/(minmax_KNN[i, "max"]- minmax_KNN[i, "min"])
+}
+
+summary(final_sub_trn_KNN)
+```
+
+Dal validation originale, si estraggono le variabili di interesse e la variabile target. Si procede quindi con la normalizzazione del nuovo validation, usando le stesse metriche del final_sub_trn_KNN set.
+
+```{r}
+#### Preparazione (e norm) Validation KNN ####
+
+validation_KNN <- validation %>% select(Absolute.Magnitude, Orbit.Uncertainity,
+                                        Minimum.Orbit.Intersection,Hazardous)
+
+# normalizzazione
+for (i in 1:(dim(validation_KNN)[2]-1)){
+  validation_KNN[, i] <- (validation_KNN[, i] - minmax_KNN[i, "min"])/(minmax_KNN[i, "max"]- minmax_KNN[i, "min"])
+}
+summary(validation_KNN)
+
+```
+
+Grazie al summary si nota che la normalizzazione è stata eseguita con successo (le variabili non si muovono esattamente tra 0 e 1 per via del fatto che la normalizzazione è stata eseguita sfruttando il minimo e il massimo del sub-training set e non del validation set). Inoltre è possibile vedere che 1111 osservazioni appartengono alla classe Non-Hazardous e 202 alla classe Hazardous.
+
+### Ricerca del k ottimale
+
+Si procede quindi con l'addestramento del KNN sui dati del final_sub_trn_KNN. La previsione viene fatta sfruttando il validation set precedentemente creato. L'unico parametro presente nel KNN è il parametro di tuning k: esso regola un compromesso tra la complessità dell'algoritmo e la sua capacità previsiva. E' dunque necessario scegliere il k ottimale. A tal fine si è costruito un ciclo for dove si va ad applicare il KNN con diversi valori di k, al fine di identificare quello che porta alla maggiore riduzione dell'error rate.
+
+```{r,fig.width=10, fig.height=6}
+err_rate = function(actual, predicted) { mean(actual != predicted) }
+
+set.seed(123)
+k_to_try = 1:100
+err_k = rep(x = 0, times = length(k_to_try))
+for (i in seq_along(k_to_try)) {
+  pred = knn(train = final_sub_trn_KNN[,-4],
+             test = validation_KNN[,-4], cl = final_sub_trn_KNN[,4],
+             k = k_to_try[i])
+  err_k[i] = err_rate(validation_KNN[,4], pred) }
+
+plot(err_k, type = "b", col = "cornflowerblue", cex = 1, pch = 20,
+     xlab = "K", ylab = "Error rate", 
+     main = "Error rate vs K")
+
+```
+
+Dal plot dell' errore ottenuto con i diversi k, sembra che il k migliore sia 1. Si decide di non considerare questa opzione in quanto con k=1 si ha il problema dell'overfitting: facendo previsione sulla base dell'osservazione più vicina, il training MSE sarà sicuramente pari a 0, ma il test MSE sarà molto più alto.
+Con k=2 si potrebbero riscontrare dei problemi legati al fatto che, considerando le sole due osservazioni più vicine, se una delle due osservazioni appartiene alla classe 0 e l'altra alla classe 1, l'algoritmo sceglie in maniera casuale e non è quindi in grado di applicare applicare il criterio del majority voting.
+Date queste considerazioni, è possibile dedurre dal grafico che il k migliore risulta essere k=3.
+
+# PREVISIONE SU VALIDATION
+
+A questo punto, si valuta la capacità previsiva della regressione logistica e del KNN sul validation set.
+
+## Regressione Logistica
+
+Si inizia calcolando le previsioni della regressione logistica sul validation set usando come valore soglia 0.5: se $\text{Pr}(Y = 1|X = x)$ è maggiore di 0.5, allora si classifica tale osservazione come Hazardous (classe 1) , altrimenti come Non-Hazardous (classe 0). Si calcola poi la confusion matrix, usando come classe positiva la classe Hazardous.
+
+```{r}
+predAIC<-ifelse(predict(model_logit2, validation_log, type='response')>0.5, 1, 0)
+(conf_matrixreg<-confusionMatrix(as.factor(predAIC), validation_log[, 4], positive='1'))
+```
+
+La confusion matrix permette di osservare che la regressione logistica sembra classificare bene sia le osservazioni che appertengono alla classe Non-Hazardous sia le osservazioni che appartengono alla classe Hazardous. L'accuracy è pari a 83.09%. La Sensitivity, che rappresenta la percentuale di osservazioni correttamente classificare come Hazardous, è alta (85.64%), mentre la Specificity, che indica la proporzione di osservazioni correttamente classificare come Non-Hazardous, è un po' più bassa rispetto la Sensitivity mantendosi però comunque alta (82.63%). Il Positive Predicted Value, che indica, sull'insieme di osservazioni che sono state classificate in classe 1, quante effettivamente appartengono a tale classe risulta essere abbastanza basso (47.27%), mentre il Negative Predicted Value, che indica, sul totale delle osservazioni classificate in classe 0, quante appartengono effettivamente a tale classe è molto alto (96.94%).
+
+## KNN
+
+Si riapplica il KNN sui dati del final_sub_trn_KNN per valutare le capacità previsive sul validation, utilizzando il k migliore indentificato in precendenza (k=3). Subito dopo viene calcolata la confusion matrix.
+
+```{r}
+set.seed(123)
+pred_knn <-  knn(train = final_sub_trn_KNN[,-4], test = validation_KNN[,-4], cl = final_sub_trn_KNN[,4],k = 3, prob = TRUE)
+(conf_matrix<-confusionMatrix(as.factor(pred_knn),as.factor(validation_KNN$Hazardous), positive="1"))
+```
+
+Il KNN presenta capacità previsive decisamente superiori. L'accuracy è pari a 98.02%. La Sensitivity è pari a 98.51%, la Specificity è 97.93% ,il Positive Predicted Value è pari al 89.64% e il Negative Predicted Value è pari a 99.73%. Sia per la classe Hazardous che per la classe Non-Hazardous le performance sono molto soddisfacenti. Solo 3 osservazioni che in realtà rappresentano asteroidi pericolosi vengono classificati come non pericolosi, mentre solo 23 osservazioni classificate come pericolose in realtà non lo sono. E' meglio, per questo caso specifico, sbagliare classificando un asteroide come pericoloso quando in realtà non lo è, che il caso contrario.
+
+Si va a valutare quindi il False Negative Rate:
+
+```{r}
+conf_matrix$table[1,2]/(conf_matrix$table[1,1]+conf_matrix$table[1,2])
+
+```
+
+Il False Negative Rate, che indica, sul totale delle osservazioni che sono state classificate come Non-Hazardous, quante sono in realtà Hazardous, è estramamente basso.
+
+## F1 score
+
+Si procede con il calcolo di altre due metriche che permettono di valutare la bontà delle capacità previsive delle due tecniche considerate: si tratta dell'F1-score e della curva di ROC.
+
+L'F1-score combina Precision, che coincide con il Positive Predicted Value, e Recall, che coincide con la Sensitivity, in unico valore. $$ F1 = 2 \times \frac{P \times R}{P + R} $$. Più è elevato il suo valore, migliore sarà la performance del modello.
+
+```{r}
+# F1 score regr logistica
+F1_regr_log <-conf_matrixreg$byClass[7]
+F1_regr_log
+```
+
+```{r}
+# F1 score KNN
+F1_KNN <- conf_matrix$byClass[7]
+F1_KNN
+```
+
+L'F1-score della regressione logistica è molto basso, mentre quello del KNN risulta essere particolarmente alto. Ciò significa che il KNN è in grado di prevedere la classe di interesse più precisamente rispetto alla regressione logistica.
+
+## Curve di ROC e auc
+
+Di seguito si procede con il calcolo della curva di ROC, che permette di confrontare il tasso di veri positivi con il tasso di falsi positivi al variare della soglia di classificazione. La metrica di riferimento è l'AUC, cioè l'area al di sotto della curva. Tale metrica si muove tra 0 e 1: un AUC pari a 1 indica che la classificazione è perfetta, mentre un AUC pari a 0.5 indica che il classificatore assegna a caso le osservazioni. La curva di ROC dovrebbe avvicinarsi all'angolo in alto a sinistra così da avere un alto tasso di veri positivi e un basso tasso di falsi positivi.
+
+```{r}
+pred_roclogit <- prediction(predAIC, validation$Hazardous)
+perf_logit <- performance(pred_roclogit,"tpr","fpr")
+auc_logit <- performance(pred_roclogit, measure = "auc")@y.values
+cat("auc Regressione Logistica", ": ", auc_logit[[1]])
+```
+
+```{r}
+prob_knn_val <- attr(pred_knn, "prob")
+prob_knn_val <- 2*ifelse(pred == "0", 1-prob_knn_val, prob_knn_val) -1
+pred_rocknn_val <- prediction(prob_knn_val, validation_KNN[, 4])
+pred_knn_val <- performance(pred_rocknn_val, "tpr", "fpr")
+auc_knn_val <- performance(pred_rocknn_val, measure = "auc")@y.values
+cat("auc KNN", ": ", auc_knn_val[[1]])
+```
+
+```{r, fig.width=10, fig.height=5.4}
+par(mfrow=c(1,2))
+plot(perf_logit, colorize=T, lwd=3, main="Regressione Logistica su Validation", cex.main = 1) ; abline(a=0, b=1, lty=2, col="gray")
+plot(pred_knn_val, colorize=T, lwd=3, main="KNN su Validation", cex.main = 1); abline(a=0, b=1, lty=2, col="gray")
+```
+
+Dai grafici si vede che il KNN ha capacità previsive decisamente migliori rispetto alla regressione logistica. Ciò è confermato anche dal valore dell'AUC: per la regressione logistica è pari a 0.84, mentre per il KNN è pari 0.95.
+
+A seguito di questi confronti, si decide di non continuare l'analisi con la regressione logistica: non solo le metriche calcolate non sono così buone come quelle del KNN, ma esiste anche la problematica relativa alla relazione tra i log-odds e le covariate che non risulta essere lineare.
+
+# TRAINING E TEST
+
+## K-Nearest Neighbors
+
+Si passa dunque a valutare le performance del KNN applicato ai dati di training originali, quindi prima della sua suddivisione in sub_training e validation set, per valutare la sua capacità di classificare le osservazioni del test set.
+
+Si procede con il selezionare le variabili che dall'analisi esplorativa sono risultate maggiormente utili ai fini dell'analisi, vale a dire **Absolute.Magnitude**, **Minimum.Orbit.Intersection** e **Orbit.Uncertainty**, e la variabile target **Hazardous**.
+
+```{r}
+training_KNN <- nasa_trn %>% select(Absolute.Magnitude, Orbit.Uncertainity,
+                                    Minimum.Orbit.Intersection,Hazardous)
+```
+
+### Bilanciamento
+
+Si continua poi con il bilanciamento del training, usando la funzione *upSample*.
+
+```{r}
+set.seed(123)
+training_KNN <- upSample(training_KNN[,-4], training_KNN[,4], yname="Hazardous")
+table(training_KNN$Hazardous)
+```
+
+Le due classi sono ora bilanciate.
+
+### Normalizzazione
+
+Lo step successivo consiste nel normalizzare il training e salvare il minimo e il massimo di ciascuna variabile in una matrice, che sarà particolarmente utile nella fase di normalizzazione del test set.
+
+```{r}
+# Normalizzazione 
+minmax_TRN_KNN <- matrix(0, nrow=(dim(training_KNN)[2]-1), ncol=2) 
+colnames(minmax_TRN_KNN) <- c("min", "max")
+
+# calcolo min e max.
+for (i in 1:(dim(training_KNN)[2]-1)){
+  minmax_TRN_KNN[i, "min"] <- min(training_KNN[,i])
+  minmax_TRN_KNN[i, "max"] <- max(training_KNN[,i])
+}
+
+# normalizzazione
+for (i in 1:(dim(training_KNN)[2]-1)){
+  training_KNN[, i] <- (training_KNN[, i] - minmax_TRN_KNN[i, "min"])/(minmax_TRN_KNN[i, "max"]- minmax_TRN_KNN[i, "min"])
+}
+
+summary(training_KNN)
+
+```
+
+Dopo aver verificato che la normalizzazione è avvenuta con successo, si passa a preparare il test set, andando a selezionare le variabili **Absolute.Magnitude**, **Orbit.Uncertainty**, **Minimum.Orbit.Intersection** e **Hazardous**. Subito dopo si procede con la normalizzazione di questo insieme di dati con il minimo e il massimo delle variabili del training set, che sono stati precedentemente salvati.
+
+```{r}
+test_KNN <- nasa_tst %>% select(Absolute.Magnitude, Orbit.Uncertainity,
+                                Minimum.Orbit.Intersection,Hazardous)
+
+# summary(test_KNN)
+
+# normalizzazione
+for (i in 1:(dim(test_KNN)[2]-1)){
+  test_KNN[, i] <- (test_KNN[, i] -minmax_TRN_KNN[i, "min"])/(minmax_TRN_KNN[i, "max"]- minmax_TRN_KNN[i, "min"])
+}
+
+summary(test_KNN)
+```
+
+La normalizzazione è avvenuta con successo.
+
+### Classification Boundaries
+
+Si applica il KNN ai dati di training specificando come numero di vicini il k ottimale che è stato identificato durante la fase di addestramento dell'algoritmo, al fine di valutarne successivamente le capacità previsive sul test set.
+
+```{r}
+set.seed(123)
+model <- knn(training_KNN[, -4], test_KNN[, -4], cl=training_KNN[, 4], k=3, prob=TRUE)
+```
+
+Il seguente grafico interattivo mostra i classification boundaries del 3-NN su una griglia di punti che rappresentano i possibili valori delle tre variabili (rispettandone il loro range ma aggiungendo una piccola variazione sia rispetto al minimo che rispetto al massimo). 
+
+```{r,fig.width=7, fig.height=5}
+x1_range <- seq(min(training_KNN$Absolute.Magnitude)-0.2, max(training_KNN$Absolute.Magnitude)+0.2, length.out = 20)
+x2_range <- seq(min(training_KNN$Orbit.Uncertainity)-0.2, max(training_KNN$Orbit.Uncertainity)+0.2, length.out = 20)
+x3_range <- seq(min(training_KNN$Minimum.Orbit.Intersection)-0.2, max(training_KNN$Minimum.Orbit.Intersection)+0.2, length.out = 20)
+grid <- expand.grid(Absolute.Magnitude = x1_range, Orbit.Uncertainity = x2_range, Minimum.Orbit.Intersection = x3_range)
+grid$pred <- knn(training_KNN[,-4], grid, training_KNN[, 4], k = 3)
+
+# Grafico interattivo classification boundaries KNN
+plot_ly(data = grid, y = ~Absolute.Magnitude, x = ~Orbit.Uncertainity, z = ~Minimum.Orbit.Intersection, color = ~as.factor(grid$pred), colors = c("green2", "purple"), type = "scatter3d", mode = "markers", marker = list(size = 1.6, opacity = 1)) %>%
+  layout(scene = list(yaxis = list(title = "Absolute.Magnitude"),
+                      xaxis = list(title = "Orbit.Uncertainity"),
+                      zaxis = list(title = "Minimum.Orbit.Intersection"),
+                      camera = list(eye = list(x = -1.8, y = -2, z = 1.4))))
+```
+
+Dal grafico sopra rappresentato si può notare come ci siano poche zone di overlap o isole. Si può pero notare come le linee di confine non siano molto smooth, ciò è dovuto al fatto che il k utilizzato è piuttosto piccolo.
+
+*Andando a cliccare con il cursore sulla legenda posizionata in alto a destra si possono vedere le singole classification boundaries, andando meglio a individuare come sono fatte le due aree di classificazione.*
+
+Il seguenta grafico mostra invece le osservazioni del training sovraimposte ai classification boundaries.
+
+```{r,fig.width=7, fig.height=5}
+# Grafico interattivo con osservazioni del training sovraimposte
+plot_ly(data = grid, y = ~Absolute.Magnitude, x = ~Orbit.Uncertainity, z = ~Minimum.Orbit.Intersection, color = ~as.factor(grid$pred), colors = c("green2", "purple"), type = "scatter3d", mode = "markers", marker = list(size = 1.2, opacity = 0.7)) %>% add_trace(data = training_KNN[,-4], y = ~Absolute.Magnitude, x = ~Orbit.Uncertainity, z = ~Minimum.Orbit.Intersection, color = ~as.factor(training_KNN$Hazardous), colors = c("green2", "purple"), type = "scatter3d", mode = "markers", marker = list(size = 3, opacity = 0.8)) %>%
+  layout(scene = list(yaxis = list(title = "Absolute.Magnitude"),
+                      xaxis = list(title = "Orbit.Uncertainity"),
+                      zaxis = list(title = "Minimum.Orbit.Intersection"),
+                      camera = list(eye = list(x = -1.8, y = -2, z = 1.4))))
+```
+
+
+
+## Alberi Decisionali
+
+Gli alberi di classificazione rappresentano un altro metodo per affrontare il problema della classificazione. Essi prevedono la segmentazione dello spazio dei predittori in una serie di regioni distinte e non sovrapposte. La tecnica usata per costruire tali alberi è quella della suddivisione binaria ricorsiva, approccio di tipo top-down. I punti lungo l'albero in cui avviene lo split sono detti nodi interni, mentre le regioni terminali che vengono create sono dette leaf node o nodi terminali. La regola di split, che viene scritta come $X_j < t_k$, indentifica il ramo di sinistra, mentre $X_j >= t_k$ identifica il ramo di destra. Negli alberi di classificazione, ogni suddivisione che viene effettuata cerca di portare alla massima riduzione dell'indice di Gini nelle regioni che risultano da tale suddivione. L'indice di Gini è una misura della purezza dei nodi: se il valore dell'indice è piccolo, allora il nodo contiene osservazioni che appartengono prevalentemente a una classe piuttosto che all'altra. Per gli alberi decisionali si è deciso di usare il training originale, sul quale non è stata effetuata alcun tipo di selezione o trasformazione delle variabili. Ciò è possibile perchè gli alberi non fanno assunzioni sulla distribuzione dei dati.
+
+### Bilanciamento
+
+Prima di iniziare con la costruzione dell'albero occorre bilanciare il training set, dato che i modelli basati su alberi spesso soffrono la presenza di imbalanced data.
+
+```{r}
+set.seed (123)
+nasa_trn <- upSample(nasa_trn[,-17], nasa_trn[,17], yname="Hazardous")
+table(nasa_trn$Hazardous)
+```
+
+### Costruzione dell'albero
+
+Dopo aver bilanciato il training set, si procede con la costruzione dell'albero.
+
+```{r}
+set.seed (123)
+
+tree.nasa.trn <- tree(Hazardous ~. , nasa_trn)
+
+plot(tree.nasa.trn) ; text(tree.nasa.trn, pretty = 0) ; title(main = "Albero di classificazione non potato")
+```
+
+L'albero costruito presenta quattro nodi interni e cinque nodi terminali. La variabile più importante risulta essere **Minimum.Orbit.Intersection**: le osservazioni che assumono per **Minimum.Orbit.Intersection** un valore maggiore o uguale di 0.0499078 vengono direttamente classificate in classe 0. Per le osservazioni che assumono valore inferiore a tale soglia diventa necessario valutare la variabile **Absolute.Magnitude**: se le osservazioni hanno un valore di **Absolute.Magnitude** superiore a 22.15 vengono classificate in classe 0, altrimenti in classe 1. Gli ultimi due split sono per così dire inutili in quanto vengono creati per cercare di raggiungere la massima riduzione dell'indice di Gini.
+
+Si valuta la performance di tale tecnica.
+
+```{r}
+
+tree.pred1 <- predict(tree.nasa.trn , nasa_tst , type = "class")
+confusionMatrix(tree.pred1, nasa_tst$Hazardous, positive="1")
+
+```
+
+Dalla confusion matrix si nota che l'albero sopra costruito ha ottime performance.
+
+### CV e pruning
+
+Si decide però di applicare la tecnica di pruning per eliminare gli ultimi due split che si è detto essere di per sè poco informativi. Si va poi a rappresentare un grafico che mostra un confronto tra la size degli alberi e l'errore di classificazione.
+
+```{r, fig.width=10, fig.height=6}
+set.seed (123)
+cv.nasa <- cv.tree(tree.nasa.trn , FUN = prune.misclass)
+#SCELGO LA SIZE MIGLIORE
+plot(cv.nasa$size , cv.nasa$dev, type = "b")
+
+```
+
+Il grafico mostra che la size migliore è 3. Dunque si va ad ottenere con la funzione prune.misclass l'albero corrispondente a 3 nodi terminali.
+
+```{r}
+prune.nasa <- prune.misclass(tree.nasa.trn , best = 3)
+#GRAFICO POTATO
+plot(prune.nasa) ; text(prune.nasa , pretty = 0) ; title(main = "Albero di classificazione potato")
+
+```
+
+L'albero ottenuto è identico al primo albero che si era costruito, con l'unica differenza di aver eliminato quegli ultimi due split che erano apparsi poco informativi.
+
+## Random Forest
+
+E' noto che gli alberi decisionali sono sensibili a variazioni del training: per tale motivo sono stati proposti metodi che permettono di ridurre la varianza di determinati metodi statistici. Uno di questi metodi è il bootstrap aggregation, detto anche bagging. Il bagging funziona nel seguente modo:
+
+-   si estraggono dai dati di training B campioni bootstrap;
+
+-   su ciascun campione bootstrap si allena un classificatore $f_i$ per ottenere le previsioni sui dati di test;
+
+-   si aggregano le predizioni ottenute nel seguente modo: $f_{bag}(x)= \frac{1}{B} \sum_{i=1}^{B} f_i(x)$, dove $x$ rappresenta l'insieme dei dati di test.
+
+N.B.: Il bootstrap è un metodo di ricampionamento con reinserimento che permette di ottenere dei campioni della stessa dimensione del campione originario. Ogni osservazione, infatti,  può apparire più di una volta o non apparire mai  all'interno dello stesso campione bootstrap considerato.
+
+Il bagging viene particolarmente utilizzato nell'ambito degli alberi decisionali. Si concentra in questo caso l'attenzione sugli alberi di classificazione. Per ciascun albero di classificazione costruito su ciascun campione bootstrap si salva la classe prevista per le nuove istanze con l'obbiettivo di applicare in seguito il criterio del majority voting. La previsione finale per ogni nuova istanza è data dalla classe più 'votata' per quella osservazione dagli alberi costruiti sui B campioni.
+
+Il Random Forest è un metodo di apprendimento supervisionato che, come gli alberi decisionali, può essere sfruttato sia nei problemi di classificazione che di regressione. Esso è un metodo ensemble costituito da un bagging di alberi sui quali non viene effettuato il pruning. In questo caso ci si focalizza sulla sua applicazione nell'ambito dei metodi di classificazione.
+
+Il metodo prevede la creazione di molteplici campioni bootstrap dai dati di addestramento. Su tali campioni vengono costruiti diversi alberi che vengono sfruttati per avere una previsione stabile e accurata. Si supponga di avere a disposizione $p$ covariate: il Random Forest, ad ogni split, invece di cercare il predittore migliore tra tutte le $p$ variabili per suddividere un nodo, cerca il predittore migliore all'interno di un sottoinsieme casuale di questi $p$ predittori. In questo modo aggiunge elementi di casualità nella costruzione degli alberi, portando di solito a modelli migliori. Un vantaggio fondamentale che deriva dal considerare ad ogni split un campione casuale dall'insieme dei predittori è che, nel caso in cui sia presente un predittore molto importante nel dataset, si evita di scegliere per ogni albero che viene costruito tale variabile per il primo split, riducendo così la possibilità di avere alberi molto simili tra di loro. Indicando con $m$ il numero di predittori che rappresentano il campione casuale delle $p$ covariate, di solito si fissa $m=sqrt(p)$. Sfruttando questa tecnica, in media, $\frac{(p-m)}{p}$ split non considereranno tale predittore. Dopo aver costruito un albero per ciascun campione bootstrap dei dati di addestramento, per ottenere le previsioni finali per le nuove istanze si applica il criterio del majority voting: la classe che compare di più come previsione per una nuova istanza nei diversi alberi costruiti costituirà la previsione finale per quella particolare istanza. Da notare che il Random Forest non presenta particolari problemi di overfitting all'aumentare del numero di alberi considerato e che è meno sensibile alle variazioni del training grazie al bagging.
+
+Per l'applicazione del metodo ai dati della NASA, si sfrutta la libreria randomForest, che contiene al suo interno una funzione con lo stesso nome i cui argomenti sono:
+
+-   formula: si specifica la formula andando a identificare la variabile risposta e i suoi predittori.
+
+-   data: il dataset su cui si vuole costruire il randomForest.
+
+-   importance: se pari a TRUE, l'importanza delle variabili viene valutata.
+
+-   proximity: se pari a TRUE, viene calcolata una misura di prossimità tra le righe.
+
+-   ntree: numero di alberi da costruire.
+
+In questo caso, come dataset su cui far costruire il Random Forest si è scelto il training set senza trasformazioni. Questo perchè il Random Forest, così come gli alberi decisionali, non fa alcuna assunzione sui dati.
+
+### Primo step
+
+```{r}
+set.seed(123)
+rf_trn_1 <- randomForest(Hazardous ~ ., nasa_trn, importance = T, proximity = T, ntree = 200)
+rf_trn_1
+
+```
+
+L'output di tale comando restituisce il numero di variabili che vengono considerate in ogni split (in questo caso 4), la confusion matrix con gli errori di classificazione per ciascuna classe e la stima dell' out-of-the-bag error rate. L'OOB error rate è un metodo per misurare l'errore di previsione del Random Forest. Si è detto in precedenza che i dati in addestramento vengono campionati, tramite bootstrap, per costituire dei campioni su cui verranno costruiti gli alberi. Tutte le osservazioni che non fanno parte del campione su cui si va ad addestrare il metodo prendono il nome di osservazioni out of the bag e possono essere viste come dei dati di test su cui è possibile valutare le prestazioni del Random Forest. L'out of the bag error rate è dunque l'errore medio fatto da tutti gli alberi del Random Forest sulle osservazioni out of the bag. In questo caso è pari al 0.14%, suggerendo alte capacità previsive.
+
+### Selezione delle variabili
+
+Sfruttando la funzione *varImpPlot* è possibile valutare l'importanza dei predittori usati nella costruzione degli alberi secondo due metriche distinte: la *MeanDecreaseAccuracy* e il *MeanDecreaseGini*.
+
+La *MeanDecreaseAccuracy* indica quanto diminuisce l'accuratezza del Random Forest quando una variabile viene permutata, mantenendo invariate tutte le altre. Permutare una variabile significa modificarne il valore in maniera casuale: tale procedimento permette di identificare quali sono le variabili più importanti. Per ciascun albero e per ciascuna variabile i, si va a permutare la i-esima variabile dei dati OOB, si fa previsione sulle istanze e si calcola l'accuratezza. La *MeanDecreaseAccuracy* per l'i-esima variabile viene quindi calcolata come la differenza tra l'accuratezza con la variabile originale e l'accuratezza dopo che la variabile è stata permutata, procendo poi a fare la media su tutti gli alberi del RandomForest. Se dopo la permutazione di una variabile l'accuratezza scende di molto rispetto al valore iniziale, allora la variabile sarà molto importante per il metodo considerato.
+
+Il *MeanDecreaseGini* si basa sul calcolo dell'indice di Gini che è una misura della purezza dei nodi. Quanto più l'indice di Gini è basso, tanto più le osservazioni appartenenti a una regione saranno polarizzate intorno alla classe 0 o alla classe 1. Per ciascun albero del Random Forest e per ciascuna variabile i, si valuta ogni nodo che coinvolge la i-esima variabile, andando a calcolare quanto l'indice di Gini diminuisce dopo la divisione basata su tale variabile, pesata per il numero di istanze contenute nel nodo . Si fa poi la media su tutti gli alberi del Random Forest per ottenere il *MeanDecreaseGini*. Tanto più alto sarà il suo valore per una determinata variabile, tanto maggiore sarà l'importanza di tale variabile.
+
+```{r, fig.width=10, fig.height=6}
+varImpPlot(rf_trn_1, 
+           main = "Importanza delle variabili per la distinzione tra Hazardous e Non-Hazardous")
+```
+
+Sulla base del MeanDecreaseGini si è deciso, per rimuovere del possibile rumore, di tenere solo le variabili **Absolute.Magnitude**, **Minimum.Orbit.Intersection**, **Est.Dia.in.KM.max**, **Est.Dia.in.KM.min**, **Perihelion.Distance** e **Orbit.Uncertainity**. La decisione di mantenere anche variabili altamente correlate fra loro è dovuta al fatto che i metodi basati su alberi non vengono condizionati negativamente da eventi di multicollinearità, dato che sceglie le variabili da considerare in base a quale minimizza l'impurità.
+
+```{r}
+nasa_trn2 <- nasa_trn %>% select(Minimum.Orbit.Intersection, Orbit.Uncertainity, Est.Dia.in.KM.min., Est.Dia.in.KM.max., Perihelion.Distance, Absolute.Magnitude, Hazardous)
+```
+
+### Secondo step
+
+Si procede dunque riapplicando la funzione RandomForest sul nuovo training.
+
+```{r}
+set.seed(123)
+rf_trn_2 <- randomForest(Hazardous ~ ., nasa_trn2, importance = T, proximity = T, ntree = 200)
+rf_trn_2
+```
+
+Si può notare come la stima OOB dell'errore sia già diminuita rispetto al caso precedente, passando da 0.14% a 0.11%, confermando l'idea che mantenere tutte le variabili potesse aggiungere del "rumore" non utile. L'errore di classificazione per la classe 0 (Non-Hazardous) è leggermente diminuito, passando da 0.00285 a 0.00222, mentre quello per la classe 1 (Hazardous) è rimasto uguale. Inoltre le variabili considerate ad ogni split sono ora 2 e non 4: ciò è dovuto al fatto che è stato ridotto il numero di variabili nel training set.
+
+### Numero di alberi ottimale
+
+Il plot di rf_trn_2 mostra l' OOB error rate commesso per la classe 1 (linea verde), l'overall OOB error rate (linea nera) e l' OOB error rate commesso per la classe 0 (linea rossa) al variare del numero di alberi da considerare. Questo grafico consente di scegliere il numero migliore di alberi da usare.
+
+```{r, fig.width=10, fig.height=6}
+plot(rf_trn_2)
+```
+
+Tipicamente, si sceglie come miglior numero di alberi da usare nel Random Forest il numero dopo il quale i tre errori cessano di decrescere. Controllando il grafico sembra che tutti e tre gli errori smettano di decrescere dopo la soglia dei 50 alberi. Si è quindi deciso di imporre 50 come numero di alberi da considerare, andando così a costruire il Random Forest finale.
+
+### Terzo step
+
+```{r}
+set.seed(123)
+rf_trn_3 <- randomForest(Hazardous ~ ., nasa_trn2, importance = T, proximity = T, ntree = 50)
+
+```
+
+# PREVISIONE SU TEST
+
+Si procede a valutare le capacità previsive dei tre metodi di classificazione prescelti, cioè KNN, Classification Trees e RandomForest, anche al fine di effettuare confronti sulla qualità delle previsioni di tali tecniche.
+
+## KNN
+
+Si calcolano le metriche di interesse per il KNN e si mostra la Confusion Matrix.
+
+```{r}
+conf_KNN <- confusionMatrix(data=model,reference=factor(test_KNN[, 4]), positive="1")
+F1_KNN <- conf_KNN$byClass[[7]]
+sens_KNN <- conf_KNN$byClass[[1]]
+spec_KNN <- conf_KNN$byClass[[2]]
+fnr_KNN <- 1-conf_KNN$byClass[[1]]
+conf_KNN
+```
+
+## Alberi Decisionali
+
+Si calcolano le metriche di interesse per gli alberi decisonali e si mostra la Confusion Matrix.
+
+```{r}
+set.seed(123)
+tree.pred2 <- predict(prune.nasa , nasa_tst , type = "class")
+conf_DT <- confusionMatrix(tree.pred2, nasa_tst$Hazardous, positive="1")
+F1_DT <- conf_DT$byClass[[7]]
+sens_DT <- conf_DT$byClass[[1]]
+spec_DT <- conf_DT$byClass[[2]]
+fnr_DT <- 1-conf_DT$byClass[[1]]
+conf_DT
+```
+
+## RandomForest
+
+Si calcolano le metriche di interesse per il Random Forest e si mostra la Confusion Matrix.
+
+```{r}
+set.seed(123)
+rf_pred <- predict(rf_trn_3, nasa_tst) %>%
+  as.data.frame() %>%
+  mutate(Hazardous = as.factor(`.`)) %>%
+  select(Hazardous)
+
+conf_RF <- confusionMatrix(rf_pred$Hazardous, nasa_tst$Hazardous, positive="1")
+F1_RF <- conf_RF$byClass[[7]]
+sens_RF <- conf_RF$byClass[[1]]
+spec_RF <- conf_RF$byClass[[2]]
+fnr_RF <- 1-conf_RF$byClass[[1]]
+conf_RF
+```
+
+## Tabella Riassuntiva
+
+Si riassumono i risultati in una tabella per facilitare il confronto.
+
+```{r}
+tab <- data.frame(
+  Sensitivity = c(sens_KNN, sens_DT, sens_RF),
+  Specificity = c(spec_KNN, spec_DT,spec_RF),
+  False_Negative_Rate = c(fnr_KNN, fnr_DT, fnr_RF),
+  F1_score = c(F1_KNN, F1_DT, F1_RF)
+)
+
+rownames(tab) <- c("KNN", "Alberi Decisionali", "RandomForest")
+
+tab[1,1] <- cell_spec(tab[1, 1], color = "green3")
+tab[1,2] <- cell_spec(tab[1, 2], color = "red3")
+tab[1,3] <- cell_spec(tab[1, 3], color = "green3")
+tab[1,4] <- cell_spec(tab[1, 4], color = "red3")
+
+tab[2,1] <- cell_spec(tab[2, 1], color = "red3")
+tab[2,2] <- cell_spec(tab[2, 2], color = "orange2")
+tab[2,3] <- cell_spec(tab[2, 3], color = "red3")
+tab[2,4] <- cell_spec(tab[2, 4], color = "orange2")
+
+tab[3,1] <- cell_spec(tab[3, 1], color = "green3")
+tab[3,2] <- cell_spec(tab[3, 2], color = "green3")
+tab[3,3] <- cell_spec(tab[3, 3], color = "green3")
+tab[3,4] <- cell_spec(tab[3, 4], color = "green3")
+
+
+tabella <- tab %>%
+  kable("html", escape=FALSE) %>%
+  kable_styling(bootstrap_options = c("striped","hover","bordered"))
+tabella
+
+```
+
+Tutti e tre i metodi mostrano capacità previsive sul test set notevolmente soddisfacenti. La tecnica di classificazione che spicca maggiormente per le sue performance è il Random Forest: come il KNN, presenta una Sensitivity pari al 100% e un False Negative Rate pari a 0%. Questi risultati sono estremamente importanti in quanto permettono di concludere che nessun asteroide in realtà pericoloso è stato classificato come non pericoloso. Gli alberi di classificazione, invece, presentano una Sensitivity leggermente più bassa e un False Negative Rate leggermente più alto rispetto agli altri due metodi, ad indicare che, con questa tecnica, alcuni asteroidi pericolosi sono stati misclassificati (anche se in numero particolarmente ridotto). Il Random Forest risulta essere migliore sia degli alberi di classificazione che del KNN anche in merito alle altre due metriche sopra riportate, indicando anche una notevole capacità di classificare correttamente gli asteroidi non pericolosi.
+
+## Visualizzazione del RF
+
+Viene di seguito riportato un grafico che mostra visivamente la classificazione, effettuata dal Random Forest, delle osservazioni nelle due classi della variabile target. I punti in verde rappresentano le osservazioni classificate correttamente, mentre quelli in rosso sono le osservazioni che sono state misclassificate.
+
+```{r, fig.width=8, fig.height=6}
+
+rf_class <- data.frame(actual = nasa_tst$Hazardous,
+                       predicted = rf_pred$Hazardous) %>%
+  mutate(Status = ifelse(actual == predicted, "CORRETTI" , "SBAGLIATI"))
+
+
+ggplot(data = rf_class, mapping = aes(x = predicted, y = actual, 
+                     color = Status, shape = Status)) +
+  scale_color_manual(values = c("green2","red2")) +
+  geom_jitter(size = 2, alpha = 0.8) +
+  labs(x = "Esito previsto",
+       y = "Esito reale", title= "Previsioni con modello RandomForest (tree = 50)") +
+  theme_bw()
+```
+
+Dal grafico si vede che solo tre osservazioni del test set sono state erroneamente classificate e, grazie alle metriche calcolate precedentemente, si può affermare che tali osservazioni sono state assegnate alla classe Hazardous, quando in realtà non vi appartengono.
+
+## Curve di ROC
+
+Si cerca infine di valutare se il RandomForest risulta essere il metodo migliore anche secondo la curva di ROC, la quale confronta il tasso di veri positivi con il tasso di falsi positivi.
+
+```{r, fig.width=10, fig.height=3.8}
+prob_knn <- attr(model, "prob")
+prob_knn <- 2*ifelse(model == "0", 1-prob_knn, prob_knn) -1
+pred_rocknn <- prediction(prob_knn, test_KNN[, 4])
+pred_knn <- performance(pred_rocknn, "tpr", "fpr")
+auc_knn <- performance(pred_rocknn, measure = "auc")@y.values
+
+tree.preds <- predict(prune.nasa, nasa_tst, type="vector")[,"1"]
+pred_roctree <- prediction(tree.preds, nasa_tst$Hazardous)
+pred_tree <- performance(pred_roctree, "tpr", "fpr")
+auc_tree <- performance(pred_roctree, measure = "auc")@y.values
+
+pred_rocRF <- predict(rf_trn_3, newdata=nasa_tst, type="prob")
+pred_rocRF <- pred_rocRF[,"1"]
+pred_rocRF <- prediction(pred_rocRF, nasa_tst$Hazardous)
+pred_RF <- performance(pred_rocRF, "tpr", "fpr")
+auc_RF <- performance(pred_rocRF, measure = "auc")@y.values
+
+par(mfrow=c(1,3))
+plot(pred_knn, colorize=T, lwd=3) ; abline(a=0, b=1, lty=2, col="gray") ; title(main = "Curva di ROC per KNN", sub = paste("AUC pari a:", round(auc_knn[[1]],3)), cex.sub = 1.4) 
+plot(pred_tree, colorize=T, lwd=3, main="Curva di ROC per Alberi Decisionali"); abline(a=0, b=1, lty=2, col="gray"); title(sub = paste("AUC pari a:", round(auc_tree[[1]],3)), cex.sub = 1.4) 
+plot(pred_RF, colorize=T, lwd=3, main="Curva di ROC per RF"); abline(a=0, b=1, lty=2, col="gray"); title(sub = paste("AUC pari a:", round(auc_RF[[1]],5)), cex.sub = 1.4)
+```
+
+Anche in questo caso, il Random Forest risulta essere il metodo migliore , seguito dal KNN e dagli alberi di classificazione. E' comunque importante notare che tutti e tre le tecniche conducono a risultati veramente buoni.
+
+
+# Conclusioni
+
+E' dunque possibile concludere che KNN, Alberi Decisionali e Random Forest forniscono riscontri molto soddisfacenti circa la loro capacità di prevedere la pericolosità o la non pericolosità degli asteroidi. Il metodo migliore è risultato essere il Random Forest, perchè non solo è in grado di prevedere con grande accuratezza gli asteroidi non pericolosi, ma anche perchè ha dimostrato notevoli capacità nell'identificare anche gli asteroidi pericolosi, permettendo così alle organizzazioni spaziali di ampliare il monitoraggio di tali asteroidi e di prendere eventuali precauzioni necessarie in caso di impatto imminente.
+Queste evidenze forniscono un grande supporto per classificazioni successive che potrebbero rendersi necessarie a seguito dell'osservazione di nuovi asteroidi, di cui sarebbe necessario prevedere la pericolosità.
+
+
+# Link utili per il dataset
+
+-   https://www.kaggle.com/datasets/shrutimehta/nasa-asteroids-classification
+
+-   https://cneos.jpl.nasa.gov/
+
+-   https://cneos.jpl.nasa.gov/pd/cs/
+
+
