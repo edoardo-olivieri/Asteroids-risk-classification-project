@@ -19,4 +19,4 @@ The key components of the project include:
 
 ## Output
 
-The `AsteroidsProject.pdf` contains a detailed summary of the analysis, methodology, and findings from our project.
+The `AsteroidsProject.html` contains a detailed summary of the analysis, methodology, and findings from our project.
